@@ -10,6 +10,7 @@ The game uses four different numberings for the same items:
   field script (opcode 0x9C)  s16 <100 item, 100.. accessory, 200.. weapon, 300.. armor
 Here an item is (kind, id) with kind one of KINDS.
 """
+import re
 import struct
 
 ELF_DELTA = 0x1FFF80
@@ -39,6 +40,7 @@ BOSSLIST = (0x4BE810, 43)
 MONSTER_SET = (0x4973B0, 188, 12)      # u16 formation, u16 monster id x5 (0xFFFF empty)
 
 BAD_NAMES = {"", "------", "????????", "Dummy"}
+KEEP_NAMES = re.compile(r"\bKey\b|Lottery Ticket")
 
 
 def drop_to_item(b):

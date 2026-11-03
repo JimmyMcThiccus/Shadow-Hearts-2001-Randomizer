@@ -15,7 +15,7 @@ from . import chests as C
 from . import gamedata as G
 from .disc import Disc, copy_image
 
-VERSION = 1
+VERSION = 2
 SLUS = "SLUS_203.47"
 
 
@@ -177,8 +177,8 @@ class Randomizer:
             old = list(shop.goods)
             new, used = [], set()
             keep = self.s.shop_keep_healing and healing in old
-            for kind, _ in old:
-                if kind not in G.KINDS:
+            for kind, gid in old:
+                if kind not in G.KINDS or (kind, gid) in self.fixed:
                     new.append(None)
                     continue
                 for _ in range(50):
@@ -200,7 +200,7 @@ class Randomizer:
             if not m.name or m.name in G.BAD_NAMES:
                 continue
             old = G.drop_to_item(m.drop)
-            if old is not None and old[0] == "key":
+            if old is not None and (old[0] == "key" or old in self.fixed):
                 continue
             if old is None and not self.s.drop_fill_empty:
                 continue
@@ -254,7 +254,11 @@ class Randomizer:
             self.progress(0.86, "Reading game data")
             gd = G.GameData(disc.read_root_file(SLUS), disc.read("COMMON/CMNMSG0.BIN"))
             scripts = {p: C.Script(p, disc.read(p)) for p in sorted(x for x in disc.files if x.startswith("MPS/"))}
-            fixed = C.quest_items(scripts.values())
+            # never moved: items scripts take away, plus the numbered keys and the like (boss drops that
+            # look like quest items) and Lottery Tickets
+            fixed = C.quest_items(scripts.values()) | {
+                it for k in G.KINDS for it in gd.valid_items(k) if G.KEEP_NAMES.search(gd.item_name(it))}
+            self.fixed = fixed
             pools = self._pools(gd, fixed)
             originals = {p: bytes(sc.data) for p, sc in scripts.items()}
             if s.chests:
