@@ -5,6 +5,12 @@ only read, never changed.
 
 ## Run
 
+Download `ShadowHeartsRandomizer.exe` from the
+[Releases](https://github.com/JimmyMcThiccus/Shadow-Hearts-2001-Randomizer/releases) page and run it. You
+need your own Shadow Hearts (USA) disc image; settings are saved in `settings.json` beside the exe.
+
+From source:
+
 ```bash
 .venv/Scripts/pythonw.exe run_gui.pyw
 ```
@@ -16,12 +22,13 @@ or from the command line:
 ```
 
 Setup once: `C:/Python314/python.exe -m venv .venv` then `.venv/Scripts/python.exe -m pip install -r requirements.txt`.
+Build the exe: `.venv/Scripts/python.exe build.py` (writes `dist/ShadowHeartsRandomizer.exe`).
 
 ## What it changes
 
 | Option | Where | Notes |
 |---|---|---|
-| Chests | field scripts in `MPS/*.MPS` (opcode 0x9C) | the "You've received X." text is rewritten; chests whose message can't be matched, Lottery Tickets, keys and items quests take away are left alone and listed in the log |
+| Chests | field scripts in `MPS/*.MPS` (opcode 0x9C) | the "You've received X." text is rewritten; chests whose message can't be matched, Lottery Tickets and items quests take away are left alone and listed in the log (the Third, Fifth and Seventh Keys are ordinary consumables and do move) |
 | Shops | `ShopData` / `Goods00..25` in SLUS_203.47 | same slots per shop; the debug shop (13) is untouched |
 | Drops | `monster_list` +0x1C item, +0x1D chance | key-item drops are kept |
 | Monster stats | `monster_list` HP, MP, four stats, gold | Yuri's fusions are skipped |

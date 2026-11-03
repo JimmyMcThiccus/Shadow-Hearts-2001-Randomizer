@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
 
 from .randomize import Randomizer, Settings
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# settings.json sits beside the exe when frozen by PyInstaller, else at the repo root
+HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+        else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONFIG = os.path.join(HERE, "settings.json")
 DEFAULT_PCSX2 = r"C:\Program Files\PCSX2\pcsx2-qt.exe"
 DEFAULT_OUT = os.path.join(os.path.expanduser("~"), "Documents")
@@ -177,7 +179,7 @@ class Window(QMainWindow):
         self.o_chest_mode = self._combo([("Shuffle the existing contents", "shuffle"), ("Any item", "random")])
         self.o_chest_mix = self._check("Allow any kind (a weapon chest may hold an accessory)")
         chests = self._group("Chests", self.o_chests, [("Contents", self.o_chest_mode), ("", self.o_chest_mix)],
-                             "The \"You've received\" message is rewritten to match. Lottery Tickets, keys and "
+                             "The \"You've received\" message is rewritten to match. Lottery Tickets and "
                              "items quests take away stay where they are.")
 
         self.o_shops = self._check("Randomize shop stock")
