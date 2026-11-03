@@ -1,8 +1,8 @@
 """Treasure in the field scripts (MPS/<map>.MPS) and how to rewrite it.
 
 A map file starts with an "MFID" header whose u32 list at +8 points at its chunks; the K2Script chunk
-starts with "shscript1.03".  Script header H (K2Script::Init): +0x2C string-table offset, +0x30 string
-count; string offsets are relative to H.  CMPS::Polling reads the whole file into one buffer, so a
+starts with "shscript1.03".  Script header H (K2Script::Init): +0x28 string count, +0x2C string-table
+offset (k2sd_readopt type 6 indexes it); string offsets are relative to H.  CMPS::Polling reads the whole file into one buffer, so a
 string appended past the end of the file is still reachable through the table.
 
 Commands are 8 bytes at H-relative 8-byte alignment: u16 op, u8 type0, u8 type1, s16 arg0, s16 arg1
@@ -10,6 +10,10 @@ Commands are 8 bytes at H-relative 8-byte alignment: u16 op, u8 type0, u8 type1,
     5A <str "You've received ">  5A <str item name>  5A <str ".">  ...
     04 ..  9C <code> <count>  05  06 ..  9D <code> <count>  05  30 1  31 <flag>
 where 9C adds <count> of item <code> (script numbering, see gamedata) and 31 sets the opened flag.
+Invisible field items have the same message and 9C, but 31 writes a byte variable (type 0x41,
+k2sd_writopt: 0x100880 + n) instead of a bit flag (type 0x43, 0x100800 bit n).  Some messages are
+    5A <str "You got %s."> <str item name>
+with both args string-typed; the second string fills the %s.
 Only chests whose name string is found are randomized; everything else is reported and left alone.
 """
 import re
@@ -18,7 +22,8 @@ import struct
 from . import gamedata as G
 
 OP_GIVE, OP_MSG, OP_SETVAR = 0x9C, 0x5A, 0x31
-T_STRING, T_FLAG = 0x60, 0x43
+T_STRING = 0x60
+T_MARK = {0x43: "flag", 0x41: "var", 0x42: "word"}   # 31 targets that record "picked up"
 BACK_WINDOW = 40          # commands searched before a 9C for its message
 FLAG_WINDOW = 10          # commands searched after a 9C for the opened flag
 
@@ -44,7 +49,7 @@ class Script:
                 break
         if self.h is None:
             return
-        self.st_off, self.st_n = struct.unpack_from("<II", data, self.h + 0x2C)
+        self.st_n, self.st_off = struct.unpack_from("<II", data, self.h + 0x28)
         self.code_end = self.h + self.st_off
 
     def str_off(self, i):
@@ -85,7 +90,7 @@ class Chest:
 
     def __init__(self, path, off, code, count, flag, name_str):
         self.path, self.off, self.code, self.count = path, off, code, count
-        self.flag, self.name_str = flag, name_str      # name_str: string-table index or None
+        self.flag, self.name_str = flag, name_str      # flag: "flag 236" / "var 455"; name_str: index or None
         self.item = G.script_to_item(code)
 
 
@@ -102,8 +107,8 @@ def scan(script, gd):
         flag = None
         for q in range(o + 8, min(end, o + 8 * FLAG_WINDOW), 8):
             c = script.cmd(q)
-            if c[0] == OP_SETVAR and c[1] == T_FLAG:
-                flag = c[3]
+            if c[0] == OP_SETVAR and c[1] in T_MARK:
+                flag = "%s %d" % (T_MARK[c[1]], c[3])
                 break
         if flag is None:
             continue
@@ -112,10 +117,13 @@ def scan(script, gd):
         name_str = None
         for q in range(o - 8, max(h, o - 8 * BACK_WINDOW) - 1, -8):
             c = script.cmd(q)
-            if c[0] == OP_MSG and c[1] == T_STRING and 0 <= c[3] < script.st_n:
-                if names_match(inv, script.string(c[3])):
-                    name_str = c[3]
-                    break
+            if c[0] != OP_MSG or c[1] != T_STRING:
+                continue
+            # 5A <name>, or 5A <"You got %s."> <name> where the second string fills the %s
+            cand = c[4] if c[2] == T_STRING else c[3]
+            if 0 <= cand < script.st_n and names_match(inv, script.string(cand)):
+                name_str = cand
+                break
         out.append(Chest(script.path, o, code, count, flag, name_str))
     return out
 

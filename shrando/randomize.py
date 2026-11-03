@@ -15,7 +15,7 @@ from . import chests as C
 from . import gamedata as G
 from .disc import Disc, copy_image
 
-VERSION = 2
+VERSION = 3
 SLUS = "SLUS_203.47"
 
 
@@ -160,10 +160,10 @@ class Randomizer:
                     s.set_string(c.name_str, name)
                     done_str.add((c.path, c.name_str))
             maps = sorted({c.path[4:-4] for c in cs})
-            self.log.add("Chests", "flag %4d  %-22s -> %-22s  %s" % (
+            self.log.add("Chests", "%-9s  %-22s -> %-22s  %s" % (
                 key[0], gd.item_name(cs[0].item), name, " ".join(maps)))
         for key, cs in skipped:
-            self.log.add("Chests left as they were", "flag %4d  %-22s  %s" % (
+            self.log.add("Chests left as they were", "%-9s  %-22s  %s" % (
                 key[0], gd.item_name(cs[0].item), " ".join(sorted({c.path[4:-4] for c in cs}))))
 
     def do_shops(self, gd, pools):

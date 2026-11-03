@@ -28,7 +28,7 @@ Build the exe: `.venv/Scripts/python.exe build.py` (writes `dist/ShadowHeartsRan
 
 | Option | Where | Notes |
 |---|---|---|
-| Chests | field scripts in `MPS/*.MPS` (opcode 0x9C) | the "You've received X." text is rewritten; chests whose message can't be matched, Lottery Tickets and items quests take away are left alone and listed in the log (the Third, Fifth and Seventh Keys are ordinary consumables and do move) |
+| Chests and invisible field items | field scripts in `MPS/*.MPS` (opcode 0x9C) | the "You've received X." text is rewritten; chests whose message can't be matched, Lottery Tickets and items quests take away are left alone and listed in the log (the Third, Fifth and Seventh Keys are ordinary consumables and do move) |
 | Shops | `ShopData` / `Goods00..25` in SLUS_203.47 | same slots per shop; the debug shop (13) is untouched |
 | Drops | `monster_list` +0x1C item, +0x1D chance | key-item drops are kept |
 | Monster stats | `monster_list` HP, MP, four stats, gold | Yuri's fusions are skipped |
