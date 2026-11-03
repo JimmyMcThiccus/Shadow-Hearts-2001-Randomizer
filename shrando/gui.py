@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
                                QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QTabWidget, QVBoxLayout,
                                QWidget)
 
-from .randomize import Randomizer, Settings
+from .randomize import REGIONS, Randomizer, Settings, identify, out_name, spoiler_name
 
 # settings.json sits beside the exe when frozen by PyInstaller, else at the repo root
 HERE = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
@@ -42,17 +42,16 @@ class Worker(QObject):
     finished = Signal(str, str)        # out iso, spoiler path
     failed = Signal(str)
 
-    def __init__(self, src, out, settings):
+    def __init__(self, src, out, spoiler, settings):
         super().__init__()
-        self.src, self.out, self.settings = src, out, settings
+        self.src, self.out, self.spoiler, self.settings = src, out, spoiler, settings
 
     def run(self):
         try:
             log = Randomizer(self.src, self.settings, self.progress.emit).run(self.out)
-            spoiler = os.path.splitext(self.out)[0] + " spoiler.txt"
-            with open(spoiler, "w", encoding="utf-8") as f:
+            with open(self.spoiler, "w", encoding="utf-8") as f:
                 f.write(log)
-            self.finished.emit(self.out, spoiler)
+            self.finished.emit(self.out, self.spoiler)
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -95,7 +94,9 @@ class Window(QMainWindow):
         box = QGroupBox("Files")
         g = QGridLayout(box)
         self.iso = QLineEdit(self.cfg.get("iso") or (DEFAULT_ISO if os.path.isfile(DEFAULT_ISO) else ""))
-        self.iso.setPlaceholderText("Clean Shadow Hearts (USA) disc image (.iso)")
+        self.iso.setPlaceholderText("Clean Shadow Hearts disc image (.iso): USA, Europe or Japan")
+        self.region = QLabel()
+        self.iso.textChanged.connect(self._identify)
         self.outdir = QLineEdit(self.cfg.get("outdir") or DEFAULT_OUT)
         self.outdir.setPlaceholderText("Folder for the randomized image")
         self.pcsx2 = QLineEdit(self.cfg.get("pcsx2", DEFAULT_PCSX2 if os.path.exists(DEFAULT_PCSX2) else ""))
@@ -109,7 +110,22 @@ class Window(QMainWindow):
             b = QPushButton("Browse")
             b.clicked.connect(pick)
             g.addWidget(b, row, 2)
+        g.addWidget(self.region, 3, 1)
+        self._identify()
         return box
+
+    def _identify(self, *_):
+        src = self.iso.text().strip()
+        if not os.path.isfile(src):
+            self.region.setText("")
+            return
+        try:
+            region, _ = identify(src)
+            self.region.setText("Release: " + REGIONS[region])
+            self.region.setStyleSheet("")
+        except (OSError, ValueError) as e:
+            self.region.setText(str(e))
+            self.region.setStyleSheet("color: #b00")
 
     def _seed_box(self):
         box = QGroupBox("Seed")
@@ -306,7 +322,12 @@ class Window(QMainWindow):
     def _generate(self):
         src = self.iso.text().strip()
         if not os.path.isfile(src):
-            QMessageBox.warning(self, "Game image", "Choose the clean Shadow Hearts (USA) .iso first.")
+            QMessageBox.warning(self, "Game image", "Choose the clean Shadow Hearts .iso first.")
+            return
+        try:
+            region, _ = identify(src)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, "Game image", str(e))
             return
         s = self._settings()
         if not s.seed:
@@ -314,7 +335,7 @@ class Window(QMainWindow):
             self.seed.setText(s.seed)
         outdir = self.outdir.text().strip() or DEFAULT_OUT
         safe = "".join(ch for ch in s.seed if ch.isalnum() or ch in "-_") or "seed"
-        out = os.path.join(outdir, "Shadow Hearts (USA) [Rando %s].iso" % safe)
+        out = os.path.join(outdir, out_name(region, 0, safe))
         if os.path.normcase(os.path.abspath(out)) == os.path.normcase(os.path.abspath(src)):
             QMessageBox.warning(self, "Output", "The output would overwrite the clean image.")
             return
@@ -323,7 +344,7 @@ class Window(QMainWindow):
         self.launch.setEnabled(False)
         self.open.setEnabled(False)
         self.thread = QThread()
-        self.worker = Worker(src, out, s)
+        self.worker = Worker(src, out, os.path.join(outdir, spoiler_name(region, safe)), s)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self._progress)

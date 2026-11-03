@@ -1,16 +1,22 @@
-"""Static game tables in SLUS_203.47 (NTSC-U retail) and the names they point at.
+"""Static game tables in the game executable and the names they point at.
 
-Addresses are retail VAs from the decomp (build/extract/symbols.txt); file offset = VA - 0x1FFF80.
-Name strings below 0x200000 live in COMMON/CMNMSG0.BIN, which K2Main::SetBtlmsg copies to 0x180000.
+Addresses are US retail VAs from the decomp (build/extract/symbols.txt); file offset = VA - 0x1FFF80 in
+every release.  The European and Japanese executables hold the same tables at other addresses (LAYOUTS);
+each was found by content: the monster list, boss list, encounter groups and shop goods are byte-identical
+to the US ones, the shop table is the 26 {name, count, goods, pic} rows pointing at those goods, and the name
+tables are the pointer arrays the item / monster name getters load (same code as US battle.cpp
+weapon_nametbl[n] with other immediates), checked by decoding them.
+Name strings below 0x200000 live in COMMON/CMNMSG0.BIN, which K2Main::SetBtlmsg copies to 0x180000.  The
+European release has CMNMSG0/1/2.BIN (English, French, German) with every name at the same offset; the
+Japanese releases keep their Shift-JIS names in the executable.
 
 The game uses four different numberings for the same items:
   inventory (BtlAddItem)      0 weapon, 1 armor, 2 accessory, 3 item, 4 key
   shop goods (ShopMenu)       u16 kind 0 item, 2 weapon, 3 armor, 4 accessory; u16 id
   monster drop (AddMonItem)   u8 1..0x40 item, +0x40 accessory, +0x80 weapon, +0xB0 armor, +0xD0 key
   field script (opcode 0x9C)  s16 <100 item, 100.. accessory, 200.. weapon, 300.. armor
-Here an item is (kind, id) with kind one of KINDS.
+Here an item is (kind, id) with kind one of KINDS.  Item ids are the same in every release.
 """
-import re
 import struct
 
 ELF_DELTA = 0x1FFF80
@@ -18,7 +24,7 @@ MSG_BASE = 0x180000
 
 KINDS = ("item", "weapon", "armor", "accessory")
 
-NAME_TABLES = {  # kind: (VA, entries)
+NAME_TABLES = {  # kind: (US VA, entries)
     "weapon": (0x4B0360, 49),
     "armor": (0x4B0430, 25),
     "accessory": (0x4B04A0, 65),
@@ -39,10 +45,45 @@ BOSSLIST = (0x4BE810, 43)
 
 MONSTER_SET = (0x4973B0, 188, 12)      # u16 formation, u16 monster id x5 (0xFFFF empty)
 
-BAD_NAMES = {"", "------", "????????", "Dummy"}
-KEEP_NAMES = re.compile(r"Lottery Ticket")
-# consumables a script happens to take away, but nothing depends on (Jamie, 2026-11-02)
-FREE_NAMES = {"Third Key", "Fifth Key", "Seventh Key"}
+
+class Layout:
+    """Where one release keeps the tables (VAs; the entry counts and row sizes are the same everywhere)."""
+
+    def __init__(self, exe, names, mon_names, shops, monsters, bosses, sets, messages, encoding, keys=68):
+        self.exe, self.names, self.mon_names = exe, names, mon_names
+        self.shops, self.monsters, self.bosses, self.sets = shops, monsters, bosses, sets
+        self.messages, self.encoding, self.keys = messages, encoding, keys
+
+
+def _names(weapon, armor, accessory, item, key):
+    return {"weapon": weapon, "armor": armor, "accessory": accessory, "item": item, "key": key}
+
+
+LAYOUTS = {
+    "US": Layout("SLUS_203.47", _names(0x4B0360, 0x4B0430, 0x4B04A0, 0x4B05B0, 0x4B06B0), 0x4B07C0,
+                 0x4CDB70, 0x4B3210, 0x4BE810, 0x4973B0, ("COMMON/CMNMSG0.BIN",), "latin1"),
+    "EU": Layout("SLES_508.22", _names(0x4C9F00, 0x4C9FD0, 0x4CA040, 0x4CA150, 0x4CA250), 0x4CA360,
+                 0x4F1710, 0x4CCDB0, 0x4D8460, 0x4AF730,
+                 ("COMMON/CMNMSG0.BIN", "COMMON/CMNMSG1.BIN", "COMMON/CMNMSG2.BIN"), "latin1"),
+    # Japanese key-item tables stop at 58 entries (the US table's blank slots 58.. are not there)
+    "JP": Layout("SLPS_250.41", _names(0x4AC7D0, 0x4ACA80, 0x4ACF30, 0x4AD440, 0x4AD8D0), 0x4AE1E0,
+                 0x4D03E0, 0x4B14E0, 0x4BF320, 0x4943C0, (), "cp932", keys=58),
+    "JP-Best": Layout("SLPS_734.18", _names(0x4ABE80, 0x4AC130, 0x4AC5E0, 0x4ACAF0, 0x4ACF80), 0x4AD890,
+                      0x4CF750, 0x4B0B90, 0x4BE940, 0x493BC0, (), "cp932", keys=58),
+}
+
+BAD_NAMES = {"", "------", "????????", "Dummy", "ダミー"}   # ダミー: the Japanese releases' "dummy"
+LOTTERY_TICKET = ("item", 60)
+# consumables a script happens to take away, but nothing depends on (Jamie, 2026-11-02): the Third, Fifth
+# and Seventh Keys
+FREE_ITEMS = {("item", 48), ("item", 49), ("item", 50)}
+# Items the US scripts take away (chests.quest_items on the US disc).  The Japanese scripts take fewer of them
+# with the 9C opcode, so these stay fixed in every release, with whatever a release's own scripts take:
+# Leather Cap, Rosewood Bracelet, Pearl Ring, Crystal Ring, Brigand Earrings, accessory 70, Talisman of Luck,
+# Third Key, Lottery Ticket, items 77 / 92 / 98, Demon Sword Tyrving, Slingshot
+US_QUEST_ITEMS = {("accessory", 2), ("accessory", 19), ("accessory", 32), ("accessory", 35), ("accessory", 48),
+                  ("accessory", 70), ("item", 13), ("item", 48), ("item", 60), ("item", 77), ("item", 92),
+                  ("item", 98), ("weapon", 40), ("weapon", 41)}
 
 
 def drop_to_item(b):
@@ -80,10 +121,11 @@ def item_to_script(it):
 
 
 class Elf:
-    """SLUS_203.47 as a mutable byte buffer addressed by VA."""
+    """The game executable as a mutable byte buffer addressed by VA."""
 
-    def __init__(self, data):
+    def __init__(self, data, encoding="latin1"):
         self.data = bytearray(data)
+        self.encoding = encoding
 
     def off(self, va):
         o = va - ELF_DELTA
@@ -107,7 +149,7 @@ class Elf:
 
     def cstr(self, va):
         o = self.off(va)
-        return self.data[o:self.data.index(b"\0", o)].decode("latin1")
+        return self.data[o:self.data.index(b"\0", o)].decode(self.encoding, "replace")
 
 
 class Monster:
@@ -126,30 +168,37 @@ class Shop:
 class GameData:
     """Reads every table the randomizer touches; write_* methods put changes back into self.elf."""
 
-    def __init__(self, slus, cmnmsg):
-        self.elf = Elf(slus)
-        self.msg = cmnmsg
-        self.names = {k: [self.name_at(self.elf.u32(va + 4 * i)) for i in range(n)]
-                      for k, (va, n) in NAME_TABLES.items()}
-        va, n = MON_NAMETBL
+    def __init__(self, slus, messages, region="US"):
+        """messages: the COMMON/CMNMSG*.BIN files the region's layout names, in its order (one per language)."""
+        self.region, self.layout = region, LAYOUTS[region]
+        self.elf = Elf(slus, self.layout.encoding)
+        self.msgs = list(messages) or [b""]
+        counts = {k: n for k, (_va, n) in NAME_TABLES.items()}
+        counts["key"] = self.layout.keys
+        # names per language (the European release has three; each language's scripts use its own)
+        self.lang_names = [{k: [self.name_at(self.elf.u32(va + 4 * i), lang) for i in range(counts[k])]
+                            for k, va in self.layout.names.items()} for lang in range(len(self.msgs))]
+        self.names = self.lang_names[0]
+        va, n = self.layout.mon_names, MON_NAMETBL[1]
         self.mon_names = [self.name_at(self.elf.u32(va + 4 * i)) for i in range(n)]
         self.monsters = self._read_monsters()
         self.shops = self._read_shops()
         self.monster_sets = self._read_monster_sets()
 
-    def name_at(self, p):
+    def name_at(self, p, lang=0):
         if p == 0:
             return ""
         if p >= 0x200000:
             return self.elf.cstr(p)
+        msg = self.msgs[lang]
         o = p - MSG_BASE
-        return self.msg[o:self.msg.index(b"\0", o)].decode("latin1")
+        return msg[o:msg.index(b"\0", o)].decode("latin1")
 
-    def item_name(self, it):
+    def item_name(self, it, names=None):
         if it is None:
             return "(nothing)"
         kind, i = it
-        names = self.names[kind]
+        names = (names or self.names)[kind]
         return names[i] if 0 <= i < len(names) else "%s #%d" % (kind, i)
 
     def valid_items(self, kind):
@@ -157,8 +206,8 @@ class GameData:
 
     # --- monsters ----------------------------------------------------------------------------------
     def _read_monsters(self):
-        base, n, size = MONSTER_LIST
-        bva, bn = BOSSLIST
+        base, (_va, n, size) = self.layout.monsters, MONSTER_LIST
+        bva, bn = self.layout.bosses, BOSSLIST[1]
         bosses = {self.elf.u8(bva + i) for i in range(bn)}
         out = []
         for i in range(n):
@@ -189,7 +238,7 @@ class GameData:
 
     # --- shops -------------------------------------------------------------------------------------
     def _read_shops(self):
-        base, n = SHOP_DATA
+        base, n = self.layout.shops, SHOP_DATA[1]
         out = []
         for s in range(n):
             va = base + 16 * s
@@ -207,9 +256,9 @@ class GameData:
 
     # --- encounter groups --------------------------------------------------------------------------
     def _read_monster_sets(self):
-        base, n, size = MONSTER_SET
+        base, (_va, n, size) = self.layout.sets, MONSTER_SET
         return [list(struct.unpack_from("<6H", self.elf.data, self.elf.off(base + size * i))) for i in range(n)]
 
     def write_monster_set(self, i, row):
-        base, _n, size = MONSTER_SET
+        base, size = self.layout.sets, MONSTER_SET[2]
         self.elf.put("<6H", base + size * i, *row)

@@ -1,4 +1,4 @@
-"""Seeded randomization of a Shadow Hearts (USA) disc image.
+"""Seeded randomization of a Shadow Hearts disc image (USA, European or Japanese release).
 
 Each category draws from its own RNG (seed + category name), so switching one category on or off never
 changes what another produces.  Key items and items scripts take away are never moved.
@@ -16,7 +16,31 @@ from . import gamedata as G
 from .disc import Disc, copy_image
 
 VERSION = 3
-SLUS = "SLUS_203.47"
+REGIONS = {"US": "USA", "EU": "Europe", "JP": "Japan", "JP-Best": "Japan (PlayStation 2 the Best)"}
+_OUT_REGION = {"US": "USA", "EU": "Europe", "JP": "Japan", "JP-Best": "Japan) (PlayStation 2 the Best"}
+
+
+def identify(path):
+    """(region, 0) for a clean Shadow Hearts image (0: the game has one disc), else raise ValueError."""
+    try:
+        d = Disc(path)
+    except (AssertionError, KeyError, IndexError, struct.error) as e:
+        raise ValueError("%s is not a Shadow Hearts disc image (%s)" % (path, e))
+    try:
+        for region, layout in G.LAYOUTS.items():
+            if layout.exe in d.root:
+                return region, 0
+    finally:
+        d.close()
+    raise ValueError("%s is not a Shadow Hearts disc image this randomizer knows" % path)
+
+
+def out_name(region, disc, seed):
+    return "Shadow Hearts (%s) [Rando %s].iso" % (_OUT_REGION[region], seed)
+
+
+def spoiler_name(region, seed):
+    return "Shadow Hearts (%s) [Rando %s] spoiler.txt" % (_OUT_REGION[region], seed)
 
 
 @dataclasses.dataclass
@@ -128,7 +152,7 @@ class Randomizer:
             root = key
             for c in cs:
                 if c.name_str is not None:
-                    root = by_str.setdefault((c.path, c.name_str), root)
+                    root = by_str.setdefault((c.path, c.block, c.name_str), root)
             merged.setdefault(root, []).extend(cs)
         usable, skipped = [], []
         for key, cs in merged.items():
@@ -157,10 +181,13 @@ class Randomizer:
             done_str = set()
             for c in cs:
                 s = scripts[c.path]
-                s.set_give(c.off, code)
-                if (c.path, c.name_str) not in done_str:
-                    s.set_string(c.name_str, name)
-                    done_str.add((c.path, c.name_str))
+                b = s.blocks[c.block]
+                b.set_give(c.off, code)
+                if (c.path, c.block, c.name_str) not in done_str:
+                    # each language's script gets the item's name in that language
+                    names = gd.lang_names[b.lang] if b.lang < len(gd.lang_names) else gd.names
+                    b.set_string(c.name_str, C.message_name(gd.item_name(it, names), s.encoding))
+                    done_str.add((c.path, c.block, c.name_str))
             maps = sorted({c.path[4:-4] for c in cs})
             self.log.add("Chests", "%-9s  %-22s -> %-22s  %s" % (
                 key[0], gd.item_name(cs[0].item), name, " ".join(maps)))
@@ -249,17 +276,20 @@ class Randomizer:
     # -- the whole run --------------------------------------------------------------------------------
     def run(self, out_iso):
         s = self.s
+        self.region, _ = identify(self.src)
+        layout = G.LAYOUTS[self.region]
         self.progress(0.0, "Copying the disc image")
         copy_image(self.src, out_iso, lambda f: self.progress(0.85 * f, "Copying the disc image"))
         disc = Disc(out_iso, writable=True)
         try:
             self.progress(0.86, "Reading game data")
-            gd = G.GameData(disc.read_root_file(SLUS), disc.read("COMMON/CMNMSG0.BIN"))
-            scripts = {p: C.Script(p, disc.read(p)) for p in sorted(x for x in disc.files if x.startswith("MPS/"))}
-            # never moved: items scripts take away (except the numbered keys, which are plain consumables)
-            # and Lottery Tickets
-            fixed = {it for it in C.quest_items(scripts.values()) if gd.item_name(it) not in G.FREE_NAMES} | {
-                it for k in G.KINDS for it in gd.valid_items(k) if G.KEEP_NAMES.search(gd.item_name(it))}
+            gd = G.GameData(disc.read_root_file(layout.exe), [disc.read(p) for p in layout.messages], self.region)
+            scripts = {p: C.Script(p, disc.read(p), layout.encoding)
+                       for p in sorted(x for x in disc.files if x.startswith("MPS/"))}
+            # never moved: items scripts take away in this release or the US one (except the numbered keys,
+            # which are plain consumables) and Lottery Tickets
+            fixed = {it for it in C.quest_items(scripts.values()) | G.US_QUEST_ITEMS if it not in G.FREE_ITEMS} | (
+                {G.LOTTERY_TICKET} & set(gd.valid_items("item")))
             self.fixed = fixed
             pools = self._pools(gd, fixed)
             originals = {p: bytes(sc.data) for p, sc in scripts.items()}
@@ -279,7 +309,7 @@ class Randomizer:
                 self.progress(0.93, "Encounters")
                 self.do_encounters(gd)
             self.progress(0.95, "Writing the disc image")
-            disc.write_root_file(SLUS, bytes(gd.elf.data))
+            disc.write_root_file(layout.exe, bytes(gd.elf.data))
             changed = [p for p, sc in scripts.items() if bytes(sc.data) != originals[p]]
             for p in changed:
                 disc.write(p, bytes(scripts[p].data))
@@ -289,13 +319,14 @@ class Randomizer:
         self.progress(0.98, "Checking the result")
         self.verify(out_iso, gd, {p: bytes(scripts[p].data) for p in changed})
         self.progress(1.0, "Done")
-        return self.log.text("Shadow Hearts Randomizer\nCode: %s\n" % s.to_code())
+        return self.log.text("Shadow Hearts Randomizer\nDisc: %s\nCode: %s\n" % (REGIONS[self.region], s.to_code()))
 
     def verify(self, out_iso, gd, files):
         """Re-open the written image and check every file we changed reads back as written."""
+        exe = gd.layout.exe
         d = Disc(out_iso)
         try:
-            assert d.read_root_file(SLUS) == bytes(gd.elf.data), "SLUS_203.47 did not read back"
+            assert d.read_root_file(exe) == bytes(gd.elf.data), "%s did not read back" % exe
             for p, data in files.items():
                 assert d.read(p) == data, "%s did not read back" % p
         finally:
