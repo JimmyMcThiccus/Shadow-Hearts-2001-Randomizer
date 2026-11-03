@@ -40,7 +40,9 @@ BOSSLIST = (0x4BE810, 43)
 MONSTER_SET = (0x4973B0, 188, 12)      # u16 formation, u16 monster id x5 (0xFFFF empty)
 
 BAD_NAMES = {"", "------", "????????", "Dummy"}
-KEEP_NAMES = re.compile(r"\bKey\b|Lottery Ticket")
+KEEP_NAMES = re.compile(r"Lottery Ticket")
+# consumables a script happens to take away, but nothing depends on (Jamie, 2026-11-02)
+FREE_NAMES = {"Third Key", "Fifth Key", "Seventh Key"}
 
 
 def drop_to_item(b):

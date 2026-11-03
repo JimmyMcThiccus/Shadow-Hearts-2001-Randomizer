@@ -254,9 +254,9 @@ class Randomizer:
             self.progress(0.86, "Reading game data")
             gd = G.GameData(disc.read_root_file(SLUS), disc.read("COMMON/CMNMSG0.BIN"))
             scripts = {p: C.Script(p, disc.read(p)) for p in sorted(x for x in disc.files if x.startswith("MPS/"))}
-            # never moved: items scripts take away, plus the numbered keys and the like (boss drops that
-            # look like quest items) and Lottery Tickets
-            fixed = C.quest_items(scripts.values()) | {
+            # never moved: items scripts take away (except the numbered keys, which are plain consumables)
+            # and Lottery Tickets
+            fixed = {it for it in C.quest_items(scripts.values()) if gd.item_name(it) not in G.FREE_NAMES} | {
                 it for k in G.KINDS for it in gd.valid_items(k) if G.KEEP_NAMES.search(gd.item_name(it))}
             self.fixed = fixed
             pools = self._pools(gd, fixed)
