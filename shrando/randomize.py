@@ -60,13 +60,15 @@ class Settings:
         return "SH1-%s-%s" % (base64.urlsafe_b64encode(blob).decode().rstrip("="), self.seed)
 
     @classmethod
-    def from_code(cls, code):
+    def from_code(cls, code, allow_old=False):
+        """allow_old: accept an older version's code for its options only (the layout has not changed
+        since version 1); used to restore the last settings, never to reproduce an old seed."""
         m = re.fullmatch(r"SH1-([A-Za-z0-9_-]{12})-(.*)", code.strip())
         if not m:
             raise ValueError("not a Shadow Hearts randomizer code")
         blob = base64.urlsafe_b64decode(m.group(1))
         vals = struct.unpack("<BH" + "".join(f for _, f in cls._NUMBERS), blob)
-        if vals[0] != VERSION:
+        if vals[0] != VERSION and not (allow_old and 1 <= vals[0] < VERSION):
             raise ValueError("code is from randomizer version %s, this is %s" % (vals[0], VERSION))
         s = cls(seed=m.group(2))
         for i, k in enumerate(cls._FLAGS):

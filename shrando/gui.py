@@ -82,7 +82,10 @@ class Window(QMainWindow):
         self.setCentralWidget(root)
         self.resize(780, 820)
 
-        s = Settings.from_code(self.cfg["code"]) if self.cfg.get("code") else Settings()
+        try:
+            s = Settings.from_code(self.cfg.get("code", ""), allow_old=True)
+        except ValueError:          # no saved code, or one this version cannot read
+            s = Settings()
         if not s.seed:
             s.seed = self._new_seed()
         self._apply(s)
