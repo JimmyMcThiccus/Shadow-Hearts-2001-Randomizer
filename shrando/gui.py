@@ -18,6 +18,8 @@ from .randomize import Randomizer, Settings
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, "settings.json")
 DEFAULT_PCSX2 = r"C:\Program Files\PCSX2\pcsx2-qt.exe"
+DEFAULT_OUT = os.path.join(os.path.expanduser("~"), "Documents")
+DEFAULT_ISO = os.path.join(DEFAULT_OUT, "Shadow_Hearts_2001_Decomp", "RETAIL_ISO", "Shadow Hearts (USA).iso")
 
 
 def load_config():
@@ -87,10 +89,10 @@ class Window(QMainWindow):
     def _files_box(self):
         box = QGroupBox("Files")
         g = QGridLayout(box)
-        self.iso = QLineEdit(self.cfg.get("iso", ""))
+        self.iso = QLineEdit(self.cfg.get("iso") or (DEFAULT_ISO if os.path.isfile(DEFAULT_ISO) else ""))
         self.iso.setPlaceholderText("Clean Shadow Hearts (USA) disc image (.iso)")
-        self.outdir = QLineEdit(self.cfg.get("outdir", ""))
-        self.outdir.setPlaceholderText("Folder for the randomized image (default: beside the clean one)")
+        self.outdir = QLineEdit(self.cfg.get("outdir") or DEFAULT_OUT)
+        self.outdir.setPlaceholderText("Folder for the randomized image")
         self.pcsx2 = QLineEdit(self.cfg.get("pcsx2", DEFAULT_PCSX2 if os.path.exists(DEFAULT_PCSX2) else ""))
         self.pcsx2.setPlaceholderText("pcsx2-qt.exe (optional, for Launch)")
         for row, (label, edit, pick) in enumerate((
@@ -305,7 +307,7 @@ class Window(QMainWindow):
         if not s.seed:
             s.seed = self._new_seed()
             self.seed.setText(s.seed)
-        outdir = self.outdir.text().strip() or os.path.dirname(src)
+        outdir = self.outdir.text().strip() or DEFAULT_OUT
         safe = "".join(ch for ch in s.seed if ch.isalnum() or ch in "-_") or "seed"
         out = os.path.join(outdir, "Shadow Hearts (USA) [Rando %s].iso" % safe)
         if os.path.normcase(os.path.abspath(out)) == os.path.normcase(os.path.abspath(src)):
