@@ -219,6 +219,15 @@ class Randomizer:
             new = [o if n is None else n for o, n in zip(old, new)]
             if keep:
                 new[old.index(healing)] = healing
+            for i, it in enumerate(new):                 # shop-placed items must have a buy price: the
+                if it is None or i < len(old) and new[i] == old[i]:
+                    continue                             # tables' 0xFFFF ("not sold", -1) greys the menu out
+                buy, sell = gd.item_price(it)
+                if buy == G.NO_BUY and sell > 0:
+                    buy = min(2 * sell, 0x7FFF) if it[0] == "item" else 2 * sell
+                    # (the item table's buy price is read signed; a bigger cap would go negative again)
+                    gd.write_item_buy(it, buy)
+                    self.log.add("Shop prices", "%s: buy -1 -> %d (2x sell %d)" % (gd.item_name(it), buy, sell))
             shop.goods = new
             gd.write_shop(shop)
             self.log.add("Shops", "shop %2d: %s" % (shop.index, ", ".join(gd.item_name(it) for it in new)))

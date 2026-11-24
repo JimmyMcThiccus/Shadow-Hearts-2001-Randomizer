@@ -45,6 +45,16 @@ BOSSLIST = (0x4BE810, 43)
 
 MONSTER_SET = (0x4973B0, 188, 12)      # u16 formation, u16 monster id x5 (0xFFFF empty)
 
+# Item parameter tables, one per shop kind: (row size, buy-price u16 offset); the sell price is the u16
+# right after it.  Offsets from the ShopMenu price reads in the decomp: accessory_param[id*0x16+0x12],
+# armor_param[id*0x14+0x10], weapon_param[id*0x20+0x1C], item_param[id*0x14+0x10] (that one read SIGNED,
+# so a 0xFFFF buy price reaches the menu as -1; ShopMenu greys the entry out when cash < price, making
+# 0xFFFF entries unbuyable).  Every 0xFFFF row in the game has a real sell price.  The tables sit in one
+# block (same ~0x1700-byte span in the US retail and Japanese dev executables, VAs 0x4B5060+ / 0x4BC740+)
+# but at release-dependent addresses, so GameData locates them by content (_find_params).
+PARAM_TABLE = {"item": (0x14, 0x10), "weapon": (0x20, 0x1C), "armor": (0x14, 0x10), "accessory": (0x16, 0x12)}
+NO_BUY = 0xFFFF                        # buy price meaning "not sold here" (shows up as -1)
+
 
 class Layout:
     """Where one release keeps the tables (VAs; the entry counts and row sizes are the same everywhere)."""
@@ -184,6 +194,7 @@ class GameData:
         self.monsters = self._read_monsters()
         self.shops = self._read_shops()
         self.monster_sets = self._read_monster_sets()
+        self.param = self._find_params()
 
     def name_at(self, p, lang=0):
         if p == 0:
@@ -253,6 +264,65 @@ class GameData:
     def write_shop(self, shop):
         for i, (kind, gid) in enumerate(shop.goods):
             self.elf.put("<HH", shop.goods_va + 4 * i, SHOP_KIND_CODE[kind], gid)
+
+    # --- item parameter tables (shop prices) --------------------------------------------------------
+    def item_price(self, it):
+        """(buy, sell) u16s of an item's param row; buy == NO_BUY (0xFFFF) means ShopMenu greys it out."""
+        size, bo = PARAM_TABLE[it[0]]
+        va = self.param[it[0]] + size * it[1] + bo
+        return self.elf.u16(va), self.elf.u16(va + 2)
+
+    def write_item_buy(self, it, buy):
+        size, bo = PARAM_TABLE[it[0]]
+        self.elf.put("<H", self.param[it[0]] + size * it[1] + bo, buy)
+
+    def _find_params(self):
+        """Locate the four param tables by content (the rows are release-independent, the addresses are
+        not).  A table is NAME_TABLES[kind][1] rows of PARAM_TABLE[kind]: row 0 is the 0/0 placeholder,
+        and every other row is either buy == NO_BUY with a sell price, or a plain price pair
+        (0 < buy < 0x8000, 0 < sell <= buy); no further 0/0 rows.  Of the readings that pass, the tables
+        are the ones that sit in one block, in item, weapon, armor, accessory order, without overlapping
+        (verified to leave exactly one solution on the US retail and the Japanese dev executables)."""
+        e = self.elf
+
+        def u16(o):
+            return struct.unpack_from("<H", e.data, o)[0]
+
+        hits = {}
+        for kind in KINDS:
+            n, (size, bo) = NAME_TABLES[kind][1], PARAM_TABLE[kind]
+            found, o, end = [], 0x80, len(e.data) - size * n
+            while o <= end:
+                if u16(o + bo) == 0 and u16(o + bo + 2) == 0:            # row 0
+                    good, rows = True, 0
+                    for i in range(1, n):
+                        b, s = u16(o + size * i + bo), u16(o + size * i + bo + 2)
+                        if (b == NO_BUY and 0 < s < 0x8000) or (0 < b < 0x8000 and 0 < s <= b):
+                            rows += 1
+                        else:
+                            good = False
+                            break
+                    if good and rows >= n - 2:
+                        found.append(o)
+                o += 4
+            hits[kind] = found
+        sizes = {k: NAME_TABLES[k][1] * PARAM_TABLE[k][0] for k in KINDS}
+        best = None
+        for it in hits["item"]:
+            for w in hits["weapon"]:
+                if w < it + sizes["item"]:
+                    continue
+                for a in hits["armor"]:
+                    if a < w + sizes["weapon"]:
+                        continue
+                    for ac in hits["accessory"]:
+                        if ac < a + sizes["armor"]:
+                            continue
+                        span = ac + sizes["accessory"] - it
+                        if span <= 0x1800 and (best is None or span < best[0]):
+                            best = (span, (it, w, a, ac))
+        assert best, "%s: no item parameter table block found" % self.layout.exe
+        return dict(zip(KINDS, (o + ELF_DELTA for o in best[1])))
 
     # --- encounter groups --------------------------------------------------------------------------
     def _read_monster_sets(self):
