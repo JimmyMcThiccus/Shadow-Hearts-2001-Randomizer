@@ -83,6 +83,17 @@ LAYOUTS = {
 }
 
 BAD_NAMES = {"", "------", "????????", "Dummy", "ダミー"}   # ダミー: the Japanese releases' "dummy"
+# Monster rows the engine keys special systems on (ids stable across regions).  Encounter
+# shuffling must never move them into or out of a group:
+#   50..67  tier 1-3 fusion beasts — the grave sets (108..) contain exactly one, and
+#           CBtlEnd/BtlWinJob grant the fusion soul by the killed monster's id
+#           (ToGetSoul index = id - 0x1e); killing something else = no fusion, and the
+#           soul banner path (m_tmpwk == 2) also suppresses the normal item-drop banner
+#   83, 198 the ultimate-fusion battles (Seraphic Radiance, Amon)
+#   155-158, 175-178, 190-194, 208-211 the Mask / Malice ("Evil") fights — malice
+#           clearing is keyed on these ids too
+SOUL_BTL_IDS = (set(range(50, 68)) | {83, 198} | set(range(155, 159)) |
+                set(range(175, 179)) | set(range(190, 195)) | set(range(208, 212)))
 LOTTERY_TICKET = ("item", 60)
 # consumables a script happens to take away, but nothing depends on (Jamie, 2026-11-02): the Third, Fifth
 # and Seventh Keys
