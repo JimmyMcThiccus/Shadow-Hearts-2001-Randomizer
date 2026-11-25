@@ -265,7 +265,16 @@ class Randomizer:
 
     def do_encounters(self, gd):
         r = rng(self.s, "encounters")
-        normal = [m for m in gd.monsters if m.name and m.name not in G.BAD_NAMES and not m.boss and m.hp > 0]
+        # ids 50..67 are the graveyard fusion beasts: their soul battle sets (108..) hold
+        # exactly one of them and BtlWinJob grants the fusion soul keyed on the killed
+        # monster's id (id - 0x1e -> ToGetSoul), so swapping one out loses the fusion and
+        # swapping one in hands out fusions from ordinary fights (the soul banner also
+        # suppresses the item-drop banner, m_tmpwk==2 in BtlWinJob).  ids 190..194 are the
+        # Mask / Evil-4 malice fights.  drop >= 0xD0 drops route through regitem_tbl and
+        # grant key/story items (Night Stalker, Rausan), never ordinary loot.
+        normal = [m for m in gd.monsters
+                  if m.name and m.name not in G.BAD_NAMES and not m.boss and m.hp > 0
+                  and m.id not in G.SOUL_BTL_IDS and m.drop < 0xD0]
         ranked = sorted(normal, key=lambda m: (m.hp, m.id))
         rank = {m.id: i for i, m in enumerate(ranked)}
         spread = max(1, self.s.encounter_spread)
